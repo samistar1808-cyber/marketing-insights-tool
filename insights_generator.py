@@ -1,24 +1,16 @@
-import google.generativeai as genai
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
 def generate_insights(metrics: dict, context: str = "") -> str:
     """
     Send analysed metrics to Gemini and get back strategic recommendations.
-    
-    Parameters:
-        metrics: dictionary of metrics from data_analyser.py
-        context: optional extra context the user provides about their data
-    
-    Returns:
-        A string containing Gemini's plain-English insights and recommendations
+    Uses direct HTTP request instead of Google's library.
     """
-    
-    # Format the metrics into readable text for the prompt
     metrics_text = f"""
 Total rows analysed: {metrics['total_rows']}
 Columns in dataset: {', '.join(metrics['columns'])}
@@ -34,7 +26,6 @@ Numeric metrics:
             top = list(vals.keys())[0] if vals else "N/A"
             metrics_text += f"  - {col}: most common = '{top}'\n"
 
-    # Build the prompt
     prompt = f"""You are a senior marketing analyst reviewing campaign performance data.
 
 Here is a summary of the dataset:
@@ -49,13 +40,29 @@ Please provide:
 
 Be specific, practical and direct. Write as if presenting to a marketing director.
 """
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(prompt)
-    return response.text
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+
+    response = requests.post(url, json=payload)
+
+    if response.status_code == 200:
+        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    else:
+        return f"Error {response.status_code}: {response.json()}"
+
 
 # ----- TEST BLOCK -----
 if __name__ == "__main__":
-    # Use the same fake data structure as data_analyser.py
     test_metrics = {
         "total_rows": 6,
         "columns": ["channel", "spend", "clicks", "conversions", "revenue"],
